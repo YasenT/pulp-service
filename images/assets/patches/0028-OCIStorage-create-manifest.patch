@@ -1,5 +1,5 @@
 diff --git a/pulpcore/app/models/publication.py b/pulpcore/app/models/publication.py
-index f354f0dd5..a261b2263 100644
+index f354f0dd5..edc41cb99 100644
 --- a/pulpcore/app/models/publication.py
 +++ b/pulpcore/app/models/publication.py
 @@ -12,6 +12,12 @@ from gettext import gettext as _
@@ -15,7 +15,7 @@ index f354f0dd5..a261b2263 100644
  from aiohttp.web_exceptions import HTTPNotFound
  
  from django.conf import settings
-@@ -198,6 +204,152 @@ class Publication(MasterModel):
+@@ -198,6 +204,153 @@ class Publication(MasterModel):
          """
          pass
  
@@ -169,7 +169,7 @@ index f354f0dd5..a261b2263 100644
      def __enter__(self):
          """
          Enter context.
-@@ -230,6 +382,12 @@ class Publication(MasterModel):
+@@ -230,6 +383,12 @@ class Publication(MasterModel):
                  self.finalize_new_publication()
                  self.complete = True
                  self.save()

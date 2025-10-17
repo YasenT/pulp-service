@@ -1,5 +1,5 @@
 diff --git a/pulpcore/app/models/publication.py b/pulpcore/app/models/publication.py
-index 49cd513ce4..24c8d7fb66 100644
+index f354f0dd5..a261b2263 100644
 --- a/pulpcore/app/models/publication.py
 +++ b/pulpcore/app/models/publication.py
 @@ -12,6 +12,12 @@ from gettext import gettext as _
@@ -15,7 +15,7 @@ index 49cd513ce4..24c8d7fb66 100644
  from aiohttp.web_exceptions import HTTPNotFound
  
  from django.conf import settings
-@@ -198,6 +204,120 @@ class Publication(MasterModel):
+@@ -198,6 +204,152 @@ class Publication(MasterModel):
          """
          pass
  
@@ -112,13 +112,45 @@ index 49cd513ce4..24c8d7fb66 100644
 +        
 +        # Create manifest config (empty config)
 +        conf, config_file = oras.oci.ManifestConfig()
-+        manifest["config"] = conf
 +        
-+        # Upload the config blob if it's a file (otherwise it's the empty config that's already uploaded)
-+        if config_file:
-+            response = client.upload_blob(config_file, container, conf)
-+            if response.status_code not in [200, 201, 202]:
-+                raise ValueError(f"Config upload failed: {response.status_code}")
++        # Check if the empty config blob exists in the registry
++        # The digest is always sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a for '{}'
++        config_digest = conf["digest"]
++        config_layer = {"digest": config_digest}
++        
++        # Upload empty config blob if it doesn't exist
++        if not client.blob_exists(config_layer, container):
++            import tempfile
++            # Create a temporary file with empty JSON
++            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
++                f.write('{}')
++                empty_config_path = f.name
++            
++            try:
++                # Create layer for the empty config
++                config_layer_full = oras.oci.NewLayer(
++                    empty_config_path,
++                    media_type=conf["mediaType"],
++                    is_dir=False
++                )
++                
++                # Upload the empty config blob
++                response = client.upload_blob(
++                    blob=empty_config_path,
++                    container=container,
++                    layer=config_layer_full
++                )
++                
++                if response.status_code not in [200, 201, 202]:
++                    raise ValueError(f"Empty config blob upload failed: {response.status_code} - {response.text}")
++                
++                _logger.info(f"Uploaded empty config blob to {registry}/{repository}")
++            finally:
++                # Clean up temp file
++                if os.path.exists(empty_config_path):
++                    os.remove(empty_config_path)
++        
++        manifest["config"] = conf
 +        
 +        # Upload the manifest with a tag based on publication ID
 +        tag = f"publication-{self.pulp_id}"
@@ -136,7 +168,7 @@ index 49cd513ce4..24c8d7fb66 100644
      def __enter__(self):
          """
          Enter context.
-@@ -230,6 +350,12 @@ class Publication(MasterModel):
+@@ -230,6 +382,12 @@ class Publication(MasterModel):
                  self.finalize_new_publication()
                  self.complete = True
                  self.save()

@@ -151,7 +151,8 @@ class OCIStorage(BaseStorage):
         client.download_blob(
             container=container,
             digest=digest,
-            outfile=tmp_path
+            outfile=tmp_path,
+            return_blob_url=False
         )
         
         # Return as Django File object
@@ -261,8 +262,16 @@ class OCIStorage(BaseStorage):
         # Get container reference
         container = client.get_container(f"{self.registry}/{self.repository}")
         
-        # Construct the blob URL
-        # Format: https://registry/v2/repository/blobs/sha256:digest
-        blob_url = container.get_blob_url(digest)
-        return f"https://{blob_url}"
+        # Load auth configs
+        client.auth.load_configs(container, configs=["/tmp/.docker/config.json"])
+        
+        # Use download_blob with return_blob_url=True to get the URL
+        blob_url = client.download_blob(
+            container=container,
+            digest=digest,
+            outfile="",  # Not used when return_blob_url=True
+            return_blob_url=True
+        )
+        
+        return blob_url
 

@@ -112,6 +112,7 @@ index f354f0dd5..a261b2263 100644
 +        
 +        # Create manifest config (empty config)
 +        conf, config_file = oras.oci.ManifestConfig()
++        conf["mediaType"] = "application/vnd.oci.image.config.v1+json"
 +        
 +        # Check if the empty config blob exists in the registry
 +        # The digest is always sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a for '{}'

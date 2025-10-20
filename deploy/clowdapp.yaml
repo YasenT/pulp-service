@@ -331,6 +331,8 @@ objects:
         sidecars:
           - name: otel-collector
             enabled: true
+            memoryRequest: ${OTEL_COLLECTOR_MEMORY_REQUEST}
+            memoryLimit: ${OTEL_COLLECTOR_MEMORY_LIMIT}
         resources:
           requests:
             cpu: ${{PULP_API_CPU_REQUEST}}
@@ -444,7 +446,7 @@ objects:
           annotations:
             "kubectl.kubernetes.io/default-container": pulp-content
         image: ${IMAGE}:${IMAGE_TAG}
-        command: ['pulpcore-content', '-b', '0.0.0.0:8000', '--max-requests', '${PULP_CONTENT_GUNICORN_MAX_REQUESTS}', '--max-requests-jitter', '${PULP_CONTENT_GUNICORN_MAX_REQUESTS_JITTER}', '--timeout', '${PULP_CONTENT_GUNICORN_TIMEOUT}', '--graceful-timeout', '${PULP_CONTENT_GUNICORN_GRACEFUL_TIMEOUT}', '--access-logfile', '-', '--access-logformat', '%a %t "%r" %s %b "%{Referer}i" "%{User-Agent}i" cache:"%{X-PULP-CACHE}o" artifact_size:"%{X-PULP-ARTIFACT-SIZE}o" rh_org_id:"%{X-RH-ORG-ID}o"']
+        command: ['pulpcore-content', '-b', '0.0.0.0:8000', '-c', '/tmp/gunicorn_config.py', '--max-requests', '${PULP_CONTENT_GUNICORN_MAX_REQUESTS}', '--max-requests-jitter', '${PULP_CONTENT_GUNICORN_MAX_REQUESTS_JITTER}', '--timeout', '${PULP_CONTENT_GUNICORN_TIMEOUT}', '--graceful-timeout', '${PULP_CONTENT_GUNICORN_GRACEFUL_TIMEOUT}', '--access-logfile', '-', '--access-logformat', '%a %t "%r" %s %b "%{Referer}i" "%{User-Agent}i" cache:"%{X-PULP-CACHE}o" artifact_size:"%{X-PULP-ARTIFACT-SIZE}o" rh_org_id:"%{X-RH-ORG-ID}o"']
         volumeMounts:
           - name: secret-volume
             mountPath: "/etc/pulp/keys"
@@ -493,6 +495,8 @@ objects:
         sidecars:
           - name: otel-collector
             enabled: true
+            memoryRequest: ${OTEL_COLLECTOR_MEMORY_REQUEST}
+            memoryLimit: ${OTEL_COLLECTOR_MEMORY_LIMIT}
         resources:
           requests:
             cpu: ${{PULP_CONTENT_CPU_REQUEST}}
@@ -601,6 +605,8 @@ objects:
         sidecars:
           - name: otel-collector
             enabled: ${{PULP_WORKER_OTEL_COLLECTOR_SIDECAR_ENABLED}}
+            memoryRequest: ${OTEL_COLLECTOR_MEMORY_REQUEST}
+            memoryLimit: ${OTEL_COLLECTOR_MEMORY_LIMIT}
         resources:
           requests:
             cpu: ${{PULP_WORKER_CPU_REQUEST}}
@@ -691,9 +697,6 @@ objects:
           timeoutSeconds: 20
           failureThreshold: 5
         terminationGracePeriodSeconds: 3660
-        sidecars:
-          - name: otel-collector
-            enabled: ${{PULP_WORKER_OTEL_COLLECTOR_SIDECAR_ENABLED}}
         resources:
           requests:
             cpu: ${{PULP_WORKER_CPU_REQUEST}}
@@ -1152,10 +1155,10 @@ parameters:
     value: "500m"
   - name: OTEL_COLLECTOR_MEMORY_REQUEST
     description: Amount of memory to request for OpenTelemetry Collector container
-    value: "512Mi"
+    value: "256Mi"
   - name: OTEL_COLLECTOR_MEMORY_LIMIT
     description: Limit of memory use by OpenTelemetry Collector container
-    value: "1024Mi"
+    value: "384Mi"
   - name: OTEL_PYTHON_EXCLUDED_URLS
     description: RegEx used to exclude URLs from the OTEL metrics system
     value: ".*livez,.*status"
@@ -1173,7 +1176,7 @@ parameters:
     value: pulp-default-domain-s3
   - name: PULP_AUTHENTICATION_BACKENDS
     description: The AUTHENTICATION_BACKENDS to be used by Pulp.
-    value: "@merge django.contrib.auth.backends.RemoteUserBackend"
+    value: "@merge django.contrib.auth.backends.RemoteUserBackend,pulp_service.app.authentication.RHSamlAuthentication"
   - name: PULP_REST_FRAMEWORK__DEFAULT_AUTHENTICATION_CLASSES
     description: The default authentication classes for Pulp.
     value: "['pulp_service.app.authentication.RHServiceAccountCertAuthentication','pulpcore.app.authentication.JSONHeaderRemoteAuthentication','rest_framework.authentication.BasicAuthentication','rest_framework.authentication.SessionAuthentication']"

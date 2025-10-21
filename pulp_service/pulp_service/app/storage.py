@@ -41,8 +41,7 @@ class OCIStorage(BaseStorage):
         token_response = requests.get(
             token_url,
             params=token_params,
-            headers={"Authorization": f"Basic {basic_auth}"},
-            timeout=30
+            headers={"Authorization": f"Basic {basic_auth}"}
         )
         
         if token_response.status_code == 200:
@@ -81,35 +80,58 @@ class OCIStorage(BaseStorage):
         )
         
         # Get the file path from the content object
-        # The content parameter is a Django File object with a 'name' attribute
-        file_path = content.file.name
+        # For chunked uploads, content.file is a BytesIO object without a 'name' attribute
+        # We need to write it to a temporary file first
+        if hasattr(content.file, 'name') and not isinstance(content.file, bytes):
+            # Direct file upload - use the existing file path
+            file_path = content.file.name
+            temp_file_created = False
+        else:
+            # Chunked upload or BytesIO - content.file is in-memory, write to temp file
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.blob')
+            
+            # Reset file pointer to beginning before reading
+            if hasattr(content, 'seek'):
+                content.seek(0)
+            
+            # Read and write content
+            temp_file.write(content.read())
+            temp_file.flush()
+            temp_file.close()
+            file_path = temp_file.name
+            temp_file_created = True
         
-        # Create layer metadata (calculates digest, size)
-        layer = oras.oci.NewLayer(
-            file_path,
-            media_type=oras.defaults.default_blob_media_type,
-            is_dir=False
-        )
-        
-        # Get container reference
-        container = client.get_container(f"{self.registry}/{self.repository}")
-        
-        # Load auth configs
-        client.auth.load_configs(container, configs=["/tmp/.docker/config.json"])
-        
-        # Upload the blob
-        response = client.upload_blob(
-            blob=file_path,
-            container=container,
-            layer=layer
-        )
-        
-        if response.status_code not in [200, 201, 202]:
-            raise ValueError(f"Blob upload failed: {response.status_code} - {response.text}")
-        
-        # Return blob reference: registry/repository@digest
-        blob_ref = f"{self.registry}/{self.repository}@{layer['digest']}"
-        return blob_ref
+        try:
+            # Create layer metadata (calculates digest, size)
+            layer = oras.oci.NewLayer(
+                file_path,
+                media_type=oras.defaults.default_blob_media_type,
+                is_dir=False
+            )
+            
+            # Get container reference
+            container = client.get_container(f"{self.registry}/{self.repository}")
+            
+            # Load auth configs
+            client.auth.load_configs(container, configs=["/tmp/.docker/config.json"])
+            
+            # Upload the blob
+            response = client.upload_blob(
+                blob=file_path,
+                container=container,
+                layer=layer
+            )
+            
+            if response.status_code not in [200, 201, 202]:
+                raise ValueError(f"Blob upload failed: {response.status_code} - {response.text}")
+            
+            # Return blob reference: registry/repository@digest
+            blob_ref = f"{self.registry}/{self.repository}@{layer['digest']}"
+            return blob_ref
+        finally:
+            # Clean up temporary file if we created one
+            if temp_file_created and os.path.exists(file_path):
+                os.remove(file_path)
 
     def _open(self, name, mode='rb'):
         """
@@ -243,8 +265,6 @@ class OCIStorage(BaseStorage):
         :param artifact_name: Blob reference in format: registry/repository@sha256:digest
         :return: Direct URL to the blob
         """
-        if parameters is None:
-            parameters = {}
         # Parse the digest from the blob reference
         if '@' not in artifact_name:
             raise ValueError(f"Invalid blob reference format: {artifact_name}")

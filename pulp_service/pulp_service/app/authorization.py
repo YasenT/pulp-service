@@ -18,6 +18,7 @@ org_id_var = ContextVar('org_id')
 org_id_json_path = jq.compile(".identity.internal.org_id")
 
 user_id_var = ContextVar("user_id")
+group_var = ContextVar("group")
 
 
 class DomainBasedPermission(BasePermission):

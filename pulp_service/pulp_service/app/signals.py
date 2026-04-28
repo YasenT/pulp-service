@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from pulpcore.plugin.models import Domain
 
 from pulp_service.app.models import DomainOrg
+from pulp_service.app.authorization import group_var
 
 
 _logger = logging.getLogger(__name__)
@@ -41,12 +42,13 @@ def post_create_domain(sender, **kwargs):
         org_id_var.set(None)
         user_id = user_id_var.get(None)
         user_id_var.set(None)
+        explicit_group = group_var.get(None)
+        group_var.set(None)
         if user_id:
-            # The default domain is created when migrations are run for the first time.
-            # User is only available when the REST API is used to create the domain.
             user = get_user_model().objects.get(pk=user_id)
-            if group := user.groups.first():
-                # if the Group data exists, set it as the only owner of the DomainOrg
+            if explicit_group:
+                do = DomainOrg.objects.create(org_id=org_id, group=explicit_group)
+            elif group := user.groups.first():
                 do = DomainOrg.objects.create(org_id=org_id, group=group)
             else:
                 do = DomainOrg.objects.create(org_id=org_id, user=user)

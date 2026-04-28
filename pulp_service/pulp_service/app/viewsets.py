@@ -39,7 +39,7 @@ from pulp_service.app.authentication import (
     RHTermsBasedRegistryAuthentication,
 )
 
-from pulp_service.app.authorization import DomainBasedPermission
+from pulp_service.app.authorization import DomainBasedPermission, group_var
 from pulp_service.app.models import AgentScanReport, FeatureContentGuard
 from pulp_service.app.models import PyPIYankMonitor
 from pulp_service.app.models import VulnerabilityReport as VulnReport
@@ -1879,40 +1879,53 @@ class CreateDomainView(APIView):
         This endpoint uses the model domain's storage settings and class,
         """
 
-        # Check if user has a group, create one if not
         user = request.user
         domain_name = request.data.get("name")
+        custom_group_name = request.data.get("group_name")
 
         if not domain_name:
             return Response(
                 {"error": "Domain name is required."}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        if not user.groups.exists():
-            # User has no groups, create one with a unique name or reuse existing
-            group_name = f"domain-{domain_name}"
-            _logger.info(
-                f"User {user.username} has no groups. Creating or finding group '{group_name}' for domain creation."
-            )
-            try:
-                # Use get_or_create to avoid duplicate group name issues
+        try:
+            if custom_group_name:
+                group, created = Group.objects.get_or_create(name=custom_group_name)
+                if created:
+                    _logger.info(
+                        f"Created new group '{custom_group_name}' for user {user.username}."
+                    )
+                    user.groups.add(group)
+                    _logger.info(f"Added user {user.username} to new group '{custom_group_name}'.")
+                else:
+                    _logger.info(
+                        f"Using existing group '{custom_group_name}' for domain '{domain_name}'. "
+                        f"User {user.username} is NOT being added to the existing group."
+                    )
+            elif not user.groups.exists():
+                group_name = f"domain-{domain_name}"
+                _logger.info(
+                    f"User {user.username} has no groups. "
+                    f"Creating or finding group '{group_name}' for domain creation."
+                )
                 group, created = Group.objects.get_or_create(name=group_name)
                 if created:
                     _logger.info(f"Created new group '{group_name}'.")
                 else:
                     _logger.info(f"Reusing existing group '{group_name}'.")
-
-                # Add user to the group
                 user.groups.add(group)
                 _logger.info(f"Added user {user.username} to group '{group_name}'.")
-            except Exception as e:
-                _logger.error(f"Failed to create or assign group '{group_name}': {e}")
-                return Response(
-                    {"error": f"Failed to create group for domain: {str(e)}"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                )
-        else:
-            _logger.info(f"User {user.username} already belongs to a group.")
+            else:
+                group = user.groups.first()
+                _logger.info(f"User {user.username} already belongs to group '{group.name}'.")
+        except Exception as e:
+            _logger.error(f"Failed to resolve group for domain '{domain_name}': {e}")
+            return Response(
+                {"error": f"Failed to resolve group for domain: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        group_var.set(group)
 
         # Prepare data with defaults from default domain if needed
         data = request.data.copy()

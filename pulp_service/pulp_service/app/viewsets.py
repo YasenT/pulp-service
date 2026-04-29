@@ -1922,7 +1922,7 @@ class CreateDomainView(APIView):
             _logger.error(f"Failed to resolve group for domain '{domain_name}': {e}")
             return Response(
                 {"error": f"Failed to resolve group for domain: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         group_var.set(group)

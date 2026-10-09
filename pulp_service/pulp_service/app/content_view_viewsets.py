@@ -540,6 +540,37 @@ class RpmContentViewModuleStreamsViewSet(ContentViewSearchViewSet):
         return Response({"results": serializer.data})
 
 
+def paginated_package_search(request, versions_by_domain):
+    """
+    Exact-name-filtered, NEVRA-sorted, paginated Package search across ``versions_by_domain``.
+
+    Shared by the ContentView-backed ``search/rpm/packages/list`` endpoint and the ad-hoc
+    ``rpm/content-search/packages`` endpoint (content_search_viewsets.py) -- the query logic is
+    identical, only how ``versions_by_domain`` gets resolved differs between the two.
+
+    Returns:
+        tuple: ``(page, total, limit, offset)``, ready for ``paginated_response``.
+    """
+    name = request.query_params.get("name", "")
+    limit = _int_param(request, "limit", default=100, minimum=1, maximum=1000)
+    offset = _int_param(request, "offset", default=0, minimum=0)
+
+    def build_queryset(versions):
+        qs = content_for_versions(Package, versions)
+        if name:
+            qs = qs.filter(name=name)
+        return qs.order_by("name", "version", "release", "arch")
+
+    page, total = scatter_gather(
+        versions_by_domain,
+        build_queryset,
+        order_by=("name", "version", "release", "arch"),
+        limit=limit,
+        offset=offset,
+    )
+    return page, total, limit, offset
+
+
 @extend_schema_view(
     list=extend_schema(
         parameters=[
@@ -562,22 +593,6 @@ class RpmContentViewPackageListViewSet(ContentViewSearchViewSet):
 
     def list(self, request, *args, **kwargs):
         versions_by_domain = self._versions_by_domain()
-        name = request.query_params.get("name", "")
-        limit = _int_param(request, "limit", default=100, minimum=1, maximum=1000)
-        offset = _int_param(request, "offset", default=0, minimum=0)
-
-        def build_queryset(versions):
-            qs = content_for_versions(Package, versions)
-            if name:
-                qs = qs.filter(name=name)
-            return qs.order_by("name", "version", "release", "arch")
-
-        page, total = scatter_gather(
-            versions_by_domain,
-            build_queryset,
-            order_by=("name", "version", "release", "arch"),
-            limit=limit,
-            offset=offset,
-        )
+        page, total, limit, offset = paginated_package_search(request, versions_by_domain)
         serializer = self.get_serializer(page, many=True)
         return paginated_response(request, serializer.data, total, limit, offset)
